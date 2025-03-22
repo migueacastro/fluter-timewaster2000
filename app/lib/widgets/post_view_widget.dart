@@ -1,168 +1,153 @@
 import 'dart:convert';
+import 'package:app/widgets/add_post_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:app/widgets/post_item_widget.dart';
 import 'package:app/utils/post.dart';
 
-
-
-class ScrollControllerWidget extends StatefulWidget {
-  const ScrollControllerWidget({super.key});
+class PostViewWidget extends StatefulWidget {
+  const PostViewWidget({super.key});
 
   @override
-  State<ScrollControllerWidget> createState() => _ScrollControllerWidgetState();
+  State<PostViewWidget> createState() => _PostViewWidgetState();
 }
 
-class _ScrollControllerWidgetState extends State<ScrollControllerWidget> {
-  late bool _isLastPage;
-  late int _pageNumber;
-  late bool _error;
-  late bool _loading;
-  late int _numberOfPostsPerRequest;
-  late List<Post> _posts;
-  late ScrollController _scrollController;
-
-  Future<void> fetchData() async {
-    try {
-      final response = await http.get(
-        Uri.parse(
-          "https://jsonplaceholder.typicode.com/posts?_page=$_pageNumber&_limit=$_numberOfPostsPerRequest",
-        ),
-      );
-      List responseList = json.decode(response.body);
-      List<Post> fetchedPostList =
-          responseList
-              .map((data) => Post(data['title'], data['body']))
-              .toList();
-
-      setState(() {
-        _isLastPage = fetchedPostList.length < _numberOfPostsPerRequest;
-        _loading = false;
-        _pageNumber++;
-        _posts.addAll(fetchedPostList);
-      });
-    } catch (e) {
-      //print("Error; $e");
-      setState(() {
-        _error = true;
-        _loading = false;
-      });
-    }
-  }
-
-  Widget errorDialogWidget({required double size}) {
-    ColorScheme colors = Theme.of(context).colorScheme;
-    return SizedBox(
-      height: 180,
-      width: 200,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            "Ha ocurrido un error buscando los posts.",
-            style: TextStyle(
-              fontSize: size,
-              fontWeight: FontWeight.w500,
-              color: colors.onSurface,
-            ),
-          ),
-          SizedBox(height: 20),
-          TextButton(
-            onPressed: () {
-              setState(() {
-                _loading = true;
-                _error = false;
-                fetchData();
-              });
-            },
-            child: const Text(
-              "Retry",
-              style: TextStyle(fontSize: 20, color: Colors.grey),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+class _PostViewWidgetState extends State<PostViewWidget> {
+  int page = 1;
+  final _controller = ScrollController();
+  bool hasMorePosts = true;
+  List<Post> posts = [];
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _bodyController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _pageNumber = 0;
-    _posts = [];
-    _isLastPage = false;
-    _loading = true;
-    _error = false;
-    _numberOfPostsPerRequest = 10;
-    _scrollController = ScrollController();
-    fetchData();
+    _controller.addListener(() {
+      if (_controller.position.maxScrollExtent == _controller.offset) {
+        fetchPosts();
+      }
+    });
+    fetchPosts();
   }
 
   @override
   void dispose() {
+    _controller.dispose();
     super.dispose();
-    _scrollController.dispose();
+  }
+
+  _addIconOnPressed() {
+    showModalBottomSheet(
+      context: context,
+      builder:
+          (ctx) => AddPostWidget(
+            onSubmit: submitPost,
+            titleController: _titleController,
+            bodyController: _bodyController,
+          ),
+    );
+  }
+
+  Future fetchPosts() async {
+    const limit = 15;
+
+    final response = await http.get(
+      Uri.parse(
+        'https://jsonplaceholder.typicode.com/posts?_limit=$limit&_page=$page',
+      ),
+    );
+    final List<Post> data = List<Post>.from(
+      json.decode(response.body).map((x) => Post.fromJson(x)),
+    );
+
+    setState(() {
+      page++;
+      if (data.length < limit) {
+        hasMorePosts = false;
+      }
+      posts.addAll(data);
+    });
+  }
+
+  Future submitPost() async {
+    final post = Post(
+      userId: 1,
+      id: posts.length + 1,
+      title: _titleController.text,
+      body: _bodyController.text,
+    );
+
+    final response = await http.post(
+      Uri.parse('https://jsonplaceholder.typicode.com/posts'),
+      headers: <String, String>{
+        'Content-Type': 'application/json; charset=UTF-8',
+      },
+      body: jsonEncode(post.toJson()),
+    );
+
+    if (response.statusCode == 201) {
+      setState(() {
+        posts.insert(0, post); // Add the new post to the beginning of the list
+        _titleController.clear();
+        _bodyController.clear();
+        Navigator.of(context).pop(); // Close the modal bottom sheet
+      });
+    }
+  }
+
+  Future refresh() async {
+    setState(() {
+      fetchPosts();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    _scrollController.addListener(() {
-// nextPageTrigger will have a value equivalent to 80% of the list size.
-      var nextPageTrigger = 0.2 * _scrollController.position.maxScrollExtent;
-
-// _scrollController fetches the next paginated data when the current postion of the user on the screen has surpassed 
-      if (_scrollController.position.pixels > nextPageTrigger) {
-        _loading = true;
-        fetchData();
-      }
-    });
-
+    ColorScheme colors = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text("Blog App"), centerTitle: true,),
-      body: buildPostsView(),
+      body:
+          posts.isEmpty
+              ? const Center(child: CircularProgressIndicator())
+              : ListView.builder(
+                controller: _controller,
+                padding: const EdgeInsets.all(8),
+                itemCount:
+                    posts.length +
+                    1, // Add 1 for the loading indicator or "end" message
+                itemBuilder: (context, index) {
+                  if (index < posts.length) {
+                    // Render the post item
+                    final post = posts[index];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 15,
+                        horizontal: 10,
+                      ),
+                      child: PostItemWidget(title: post.title, body: post.body),
+                    );
+                  } else {
+                    // Render the loading indicator or "end of list" message
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 40,
+                        horizontal: 30,
+                      ),
+                      child:
+                          hasMorePosts
+                              ? const Center(child: CircularProgressIndicator())
+                              : const Center(
+                                child: Text("You reached the end"),
+                              ),
+                    );
+                  }
+                },
+              ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _addIconOnPressed,
+        backgroundColor: colors.tertiary,
+        child: Icon(Icons.add, color: colors.surface),
+      ),
     );
-  }
-
-  Widget buildPostsView() {
-    if (_posts.isEmpty) {
-      if (_loading) {
-        return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(8),
-              child: CircularProgressIndicator(),
-            ));
-      } else if (_error) {
-        return Center(
-            child: errorDialogWidget(size: 20)
-        );
-      }
-    }
-    return ListView.builder(
-        controller: _scrollController,
-        itemCount: _posts.length + (_isLastPage ? 0 : 1),
-        itemBuilder: (context, index) {
-
-          if (index == _posts.length) {
-            if (_error) {
-              return Center(
-                  child: errorDialogWidget(size: 15)
-              );
-            }
-            else {
-              return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(8),
-                    child: CircularProgressIndicator(),
-                  ));
-            }
-          }
-
-            final Post post = _posts[index];
-            return Padding(
-                padding: const EdgeInsets.all(15.0),
-                child: PostItemWidget(title:post.title,body:post.body)
-            );
-        }
-        );
   }
 }

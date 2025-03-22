@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 
 class PostItemWidget extends StatelessWidget {
@@ -7,8 +8,9 @@ class PostItemWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     ColorScheme colors = Theme.of(context).colorScheme;
-
+    
     return Material(
+      elevation: 20,
       borderRadius: BorderRadius.all(Radius.circular(10)),
       color: colors.primary,
       child: Container(

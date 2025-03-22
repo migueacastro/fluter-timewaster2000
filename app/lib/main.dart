@@ -42,7 +42,12 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: ScrollControllerWidget(),
+      appBar: AppBar(
+        title: Text("Timewaster2000", style: TextStyle(fontWeight: FontWeight.bold),),
+        centerTitle: true,
+        elevation: 20,
+      ),
+      body: PostViewWidget(),
     );
   }
 }
